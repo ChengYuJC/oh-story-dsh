@@ -17,9 +17,11 @@ import {
   latestSettledMutationTurn,
   mutatingCallIds,
   openTurn,
+  initialWorkbenchMode,
   preferredWorkbenchFile,
   previewMutation,
   sameUndispatchedCalls,
+  SHORT_STORY_FILES,
   streamingAssistant,
   undispatchedCalls,
   workbenchLabel,
@@ -274,7 +276,7 @@ class WorkspaceRequestError extends Error {
 }
 
 const GROUP_ORDER: Readonly<Record<WorkbenchMode, readonly string[]>> = {
-  story: ["正文", "大纲", "设定", "追踪", "对标", "参考资料"],
+  story: ["短篇", "正文", "大纲", "设定", "追踪", "对标", "参考资料"],
   drama: ["项目", "输入", "项目开发", "设定集", "剧集", "审查", "创作者决策", "交付"],
   game: ["game-adaptations"],
   video: ["video-recaps"]
@@ -284,7 +286,9 @@ const WORKBENCH_MODES = ["story", "drama", "game", "video"] as const;
 const EDITOR_MODES = ["preview", "source", "production"] as const;
 
 function groupForPath(path: string): string {
-  return path === "short-drama.json" ? "项目" : path.split("/", 1)[0] ?? "其他";
+  if (path === "short-drama.json") return "项目";
+  if (SHORT_STORY_FILES.has(path)) return "短篇";
+  return path.split("/", 1)[0] ?? "其他";
 }
 
 async function json<T>(response: Response): Promise<T> {
@@ -840,6 +844,14 @@ function CreativeWorkbench({
   const editorPositions = useRef(new Map<string, { readonly scrollTop: number; readonly selectionStart: number; readonly selectionEnd: number }>());
   const editorReady = buffer !== undefined && buffer.missing !== true;
   const workspaceKind = workbench === "game" || workbench === "video" ? undefined : workbench;
+  // A Session starts on 小说; once per workspace, move to the workbench that actually holds work.
+  const initialWorkbenchFor = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (workspace === undefined || initialWorkbenchFor.current === workspace.cwd) return;
+    initialWorkbenchFor.current = workspace.cwd;
+    const next = initialWorkbenchMode(workbench, workspace.files, workspace.games, workspace.videos);
+    if (next !== workbench) setWorkbench(next);
+  }, [setWorkbench, workbench, workspace]);
   const gameBuilding = normalizedActivities.some(({ path }) => path.startsWith("game-adaptations/"));
   const videoBuilding = normalizedActivities.some(({ path }) => path.startsWith("video-recaps/"));
 
@@ -1842,13 +1854,12 @@ function WelcomeGuide() {
   return <section className="oh-story-welcome" aria-label="Oh Story 使用引导">
     <style>{styles}</style>
     <h2>Oh Story 已加载</h2>
-    <p>作品目录中有创作文件时，小说、短剧、游戏、视频工作台会自动显示。</p>
+    <p>直接在下方输入框说你想写什么，比如「写一篇 8000 字的重生复仇短篇」，或输入 <code>/story</code>、<code>/short-drama</code>、<code>/novel-to-game quick</code>、<code>/video-recap</code>。写出第一个创作文件后，小说、短剧、游戏、视频工作台会自动出现。</p>
     <ol>
-      <li>点击左侧「工作区 / Workspaces」旁的「添加工作区 / Add workspace」，选择存放作品的文件夹。</li>
-      <li>在下方「选择工作区 / Choose workspace」中选中该目录，或打开已有会话。</li>
-      <li>空目录（包括 DSH 自动建立的「默认工作区 / Default workspace」）先在 Chat 中开始创作，生成第一个创作文件后，工作台会自动出现。</li>
+      <li>不选文件夹也能开始：作品会写进 DSH 自动建立的「默认工作区 / Default workspace」。</li>
+      <li>想放进自己的作品文件夹：点击左侧「工作区 / Workspaces」旁的「添加工作区 / Add workspace」，在系统弹出的文件夹窗口里选择，再在下方「选择工作区 / Choose workspace」中选中它。</li>
+      <li>输入框右下角显示模型名就说明已配置好；没有模型时，在「设置 → 模型」填入 API Key。只查看已有作品无需 API Key。</li>
     </ol>
-    <p>查看已有作品无需 API Key。开始 AI 创作前，在「设置 → 模型」配置模型，再输入 <code>/story</code>、<code>/short-drama</code>、<code>/novel-to-game quick</code> 或 <code>/video-recap</code>。</p>
   </section>;
 }
 
